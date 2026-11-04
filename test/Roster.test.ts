@@ -24,4 +24,22 @@ describe("roster", () => {
     assert.strictEqual(room.state.players.get(b.sessionId)?.pfp, "");
     assert.strictEqual(room.state.players.get(b.sessionId)?.signedIn, false);
   });
+
+  it("syncs a bounded pose and look to the roster", async () => {
+    const room = await colyseus.createRoom<WorldState>("world", {});
+    const a = await colyseus.connectTo(room, { userId: "guest-a", username: "A" });
+    a.send("pose", { x: 1.5, y: 2, z: -3, facing: 1, speed: 4, vy: 0, grounded: true, aim: 5, shots: 70000, gun: "ak" });
+    a.send("look", { equipped: { hatId: "12", headId: "-1", bad: "<script>" }, proportions: { height: 1.1 }, skin: "https://x.io/s.png" });
+    await sleep(100);
+    const p = room.state.players.get(a.sessionId)!;
+    assert.strictEqual(p.ready, true);
+    assert.strictEqual(p.x, 1.5);
+    assert.strictEqual(p.aim, 1);
+    assert.strictEqual(p.gun, "ak");
+    assert.deepStrictEqual(JSON.parse(p.look), { hatId: "12", headId: "-1" });
+    assert.strictEqual(p.skin, "https://x.io/s.png");
+    a.send("pose", { x: "nope" });
+    await sleep(50);
+    assert.strictEqual(p.x, 1.5);
+  });
 });
