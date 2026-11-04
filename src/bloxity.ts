@@ -1,4 +1,4 @@
-import { AD_TOKEN_MAX_LEN, BLOXITY_API_DEFAULT, BLOXITY_BOARDS, BLOXITY_TIMEOUT_MS, GAME_SLUG_DEFAULT } from "./constants.js";
+import { TOKEN_MAX_LEN, BLOXITY_API_DEFAULT, BLOXITY_BOARDS, BLOXITY_TIMEOUT_MS, GAME_SLUG_DEFAULT } from "./constants.js";
 
 // Every Bloxity HTTP call lives here. All of them are env-driven, time out after
 // BLOXITY_TIMEOUT_MS and NEVER throw: a failure is a returned value. Tests swap the fetch.
@@ -51,7 +51,7 @@ export interface VerifiedUser {
 // POST /v1/auth/game-token/verify with the player's Legion.SDK.auth.getToken(). Null = not a
 // verified user (invalid token, unreachable API, malformed answer): treat the player as a guest.
 export async function verifyToken(token: string): Promise<VerifiedUser | null> {
-  if (typeof token !== "string" || !token || token.length > AD_TOKEN_MAX_LEN) return null;
+  if (typeof token !== "string" || !token || token.length > TOKEN_MAX_LEN) return null;
   const r = await post("/v1/auth/game-token/verify", { gameSlug: gameSlug() }, token);
   const d = r?.data;
   const u = d?.user;
@@ -91,11 +91,4 @@ export async function reportLeaderboard(scores: ScoreRow[]): Promise<ReportResul
     // ignore
   }
   return { ok, summary: `HTTP ${r.status} ${detail}` };
-}
-
-// POST /v1/ads/reward/verify: true only when the answer says `valid === true`.
-export async function verifyAdReward(rewardToken: string): Promise<boolean> {
-  if (typeof rewardToken !== "string" || !rewardToken || rewardToken.length > AD_TOKEN_MAX_LEN) return false;
-  const r = await post("/v1/ads/reward/verify", { gameSlug: gameSlug(), rewardToken });
-  return r?.data?.valid === true;
 }

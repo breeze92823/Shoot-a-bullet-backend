@@ -17,6 +17,7 @@ export interface PlayerDoc {
   gun?: string; // the equipped gun id (an owned one)
   owned?: string[]; // owned gun ids (client GUNS)
   ammo?: string; // the evolved ammo tier id (client AMMO)
+  perks?: string[]; // permanent Store perks bought with Wins (client SHOP: autowins, autorebirth)
   playTime?: number; // s with the game open
   version: number;
   updatedAt: Date;
