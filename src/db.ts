@@ -1,6 +1,6 @@
 import { MongoClient, type Collection } from "mongodb";
 
-import { LEADERBOARD_STATS } from "./constants.js";
+import { LEADERBOARD_FIELDS } from "./constants.js";
 
 // Bloxity Legion hosting injects MONGODB_URI per game+channel -- an isolated database with
 // scoped credentials. A local `npm start` normally has no Mongo reachable, so a missing or
@@ -14,6 +14,8 @@ export interface PlayerDoc {
   damage?: number; // trained Damage (resets on rebirth)
   wins?: number; // the shop currency
   rebirths?: number;
+  topWins?: number; // peak Wins (leaderboard; only ever raised)
+  topDamage?: number; // peak Damage (leaderboard; only ever raised)
   gun?: string; // the equipped gun id (an owned one)
   owned?: string[]; // owned gun ids (client GUNS)
   ammo?: string; // the evolved ammo tier id (client AMMO)
@@ -39,8 +41,8 @@ export async function connectDb(): Promise<void> {
     players = client.db().collection<PlayerDoc>("players");
     console.log("[db] connected to MongoDB");
     // The leaderboards sort and count by these (leaderboard.ts).
-    for (const stat of LEADERBOARD_STATS) {
-      players.createIndex({ [stat]: -1 }).catch((err) => console.warn(`[db] index on ${stat} failed`, err));
+    for (const field of Object.values(LEADERBOARD_FIELDS)) {
+      players.createIndex({ [field]: -1 }).catch((err) => console.warn(`[db] index on ${field} failed`, err));
     }
   } catch (err) {
     console.warn("[db] connect failed -- player progress will not persist:", err);

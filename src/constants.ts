@@ -38,13 +38,24 @@ export const GUEST_ID_PREFIX = "guest-";
 
 // Bloxity's own boards on the trophy button. `id` is the saved PlayerDoc field reported; the client
 // declares the same list with Legion.SDK.leaderboard.define (src/config.js BOARDS).
-export const LEADERBOARD_STATS = ["rebirths", "wins"] as const;
+export const LEADERBOARD_STATS = ["rebirths", "wins", "damage"] as const;
 export type LeaderboardStat = (typeof LEADERBOARD_STATS)[number];
 export const BLOXITY_BOARDS = [
   { id: "rebirths", label: "Rebirths", order: "desc", mode: "best", format: "compact", reset: "none" },
   { id: "wins", label: "Wins", order: "desc", mode: "best", format: "compact", reset: "none" },
+  { id: "damage", label: "Damage", order: "desc", mode: "best", format: "compact", reset: "none" },
 ] as const;
+// The in-world Leaderboard board (leaderboard.ts): top LEADERBOARD_SIZE saved players per stat, by
+// the all-time peak (wins are spent and Damage resets on a rebirth, so the current values would drop).
+export const LEADERBOARD_SIZE = 5;
+export const LEADERBOARD_EVERY_MS = 60 * 1000;
+// stat -> PlayerDoc field holding its peak. rebirths only go up.
+export const LEADERBOARD_FIELDS = { wins: "topWins", rebirths: "rebirths", damage: "topDamage" } as const;
 export const REPORT_EVERY_MS = 15 * 1000;
 export const REPORT_BATCH_MAX = 200;
 // Account ids reported to Bloxity: `legion_<_id>` (any `#m...` suffix is stripped).
 export const LEGION_PREFIX = "legion_";
+
+export const LOOK_MAX_LEN = 1500; // serialized equipped-avatar / proportions JSON
+export const SKIN_MAX_LEN = 512;
+export const WORLD_LIMIT = 2000; // |coordinate| bound for streamed poses

@@ -2,9 +2,11 @@ import { Room, Client, CloseCode } from "colyseus";
 import { WorldState, PlayerState } from "./schema/WorldState.js";
 import { GUEST_ID_PREFIX, LEGION_PREFIX, NAME_MAX, PFP_MAX_LEN, RECONNECT_SECONDS, ROOM_MAX_CLIENTS } from "../constants.js";
 import { getPlayers, type PlayerDoc } from "../db.js";
-import { sanitizeProgress } from "../sanitize.js";
+import { sanitizeJsonMap, sanitizePose, sanitizeProgress, sanitizeSkinUrl } from "../sanitize.js";
 import { verifyToken } from "../bloxity.js";
 import { queueScores } from "../reporter.js";
+import { LEADERBOARD_EVERY_MS } from "../constants.js";
+import { ranksOf, topBoards } from "../leaderboard.js";
 
 function sanitizeName(raw: unknown): string {
   return typeof raw === "string" ? raw.slice(0, NAME_MAX) : "";
@@ -53,16 +55,52 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       queueScores(userId, patch); // Bloxity boards, from saved state only
       const players = getPlayers();
       if (!players) return; // Mongo unset/unreachable -- degrade silently
+      // Peaks only ever go up ($max), so a spent-down or reset value can't lower a leaderboard score.
+      const { rebirths, ...rest } = patch;
+      const peaks: Record<string, number> = {};
+      if (rebirths !== undefined) peaks.rebirths = rebirths;
+      if (patch.wins !== undefined) peaks.topWins = patch.wins;
+      if (patch.damage !== undefined) peaks.topDamage = patch.damage;
       try {
         await players.updateOne(
           { _id: userId },
           // Display name comes from this connection's own PlayerState, not `msg`.
-          { $set: { ...patch, username: p.username || "Player", updatedAt: new Date() }, $setOnInsert: { version: 1 } },
+          {
+            $set: { ...rest, username: p.username || "Player", updatedAt: new Date() },
+            ...(Object.keys(peaks).length > 0 && { $max: peaks }),
+            $setOnInsert: { version: 1 },
+          },
           { upsert: true },
         );
       } catch (err) {
         console.warn("[WorldRoom] saveProgress failed", err);
       }
+    },
+    // Live pose (~15/s): copied into the synced PlayerState so every other client sees it.
+    pose: (client: Client, msg: unknown) => {
+      const p = this.state.players.get(client.sessionId);
+      const pose = sanitizePose(msg);
+      if (!p || !pose) return;
+      p.x = pose.x;
+      p.y = pose.y;
+      p.z = pose.z;
+      p.facing = pose.facing;
+      p.speed = pose.speed;
+      p.vy = pose.vy;
+      p.grounded = pose.grounded;
+      p.aim = pose.aim;
+      p.shots = pose.shots;
+      if (pose.gun) p.gun = pose.gun;
+      p.ready = true;
+    },
+    // Avatar look: equipped cosmetics, composed skin texture and body proportions.
+    look: (client: Client, msg: unknown) => {
+      const p = this.state.players.get(client.sessionId);
+      const m = (msg ?? {}) as Record<string, unknown>;
+      if (!p || typeof m !== "object") return;
+      p.look = sanitizeJsonMap(m.equipped);
+      p.prop = sanitizeJsonMap(m.proportions);
+      p.skin = sanitizeSkinUrl(m.skin);
     },
     // Re-states identity after a login/logout that happens AFTER join (a guest who signs in
     // mid-session). The server answers with progress/noProgress for the new identity.
@@ -71,6 +109,26 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       if (p) void this.applyIdentity(client, p, msg ?? {});
     },
   };
+
+  // Leaderboards (leaderboard.ts): each client gets the top lists + its own ranks, to itself, every
+  // LEADERBOARD_EVERY_MS and once right after its save loads.
+  onCreate() {
+    this.clock.setInterval(() => {
+      for (const c of this.clients) void this.sendLeaderboard(c);
+    }, LEADERBOARD_EVERY_MS);
+  }
+
+  // `leaderboard` { boards: { wins|rebirths|damage: [{ name, value }] }, ranks: { stat: n | null } }.
+  private async sendLeaderboard(client: Client) {
+    const userId = this.userIds.get(client.sessionId) ?? "";
+    const [boards, ranks] = await Promise.all([topBoards(), ranksOf(userId)]);
+    if (!this.state.players.has(client.sessionId)) return;
+    try {
+      client.send("leaderboard", { boards, ranks });
+    } catch {
+      // Gone meanwhile.
+    }
+  }
 
   onJoin(client: Client, options?: IdentityMsg) {
     const p = new PlayerState();
@@ -179,5 +237,6 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     this.loaded.add(client.sessionId);
     if (!doc) client.send("noProgress", {});
     else client.send("progress", sanitizeProgress(doc) ?? {});
+    void this.sendLeaderboard(client);
   }
 }
